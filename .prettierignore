@@ -1,0 +1,10 @@
+# 构建产物与依赖（格式化它们毫无意义且极慢）
+node_modules
+dist
+coverage
+
+# 锁文件不参与格式化（机器生成）
+package-lock.json
+
+# 不是代码的文件
+*.md
