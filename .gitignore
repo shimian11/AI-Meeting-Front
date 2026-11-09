@@ -14,6 +14,12 @@ dist-ssr
 coverage
 *.local
 
+# 环境变量（*.local 挡不住不带后缀的 .env / .env.test / .env.prod）
+# Vite 只会把 VITE_ 开头的变量打进产物，但仍不应入库：不同环境地址不同
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
