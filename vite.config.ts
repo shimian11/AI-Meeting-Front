@@ -24,6 +24,11 @@ export default defineConfig({
 			  target: 'http://localhost:8002',
 			  changeOrigin: true,
 		  },
+		  '/agent': {
+			  target: 'http://localhost:8100',
+			  changeOrigin: true,
+			  rewrite: (p) => p.replace(/^\/agent/, '')
+		  }
 	  },
   },
 })

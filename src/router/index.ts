@@ -1,23 +1,30 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
+import { tokenStore } from '@/api/client'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
-    {
-      path: '/',
-      name: 'home',
-      component: HomeView,
-    },
-    {
-      path: '/about',
-      name: 'about',
-      // route level code-splitting
-      // this generates a separate chunk (About.[hash].js) for this route
-      // which is lazy-loaded when the route is visited.
-      component: () => import('../views/AboutView.vue'),
-    },
-  ],
+	  { path: '/', redirect: '/interview' },
+	  { path: '/login', component: () => import('@/views/LoginView.vue') },
+	  {
+		  path: '/interview',
+		  component: () => import('@/views/InterviewIntroView.vue'),
+		  meta: { requiresAuth: true},
+	  },
+	  {
+		  path: '/interview/:sessionId',
+		  component: () => import('@/views/InterviewRoomView.vue'),
+		  meta: { requiresAuth: true },
+	  },
+    ],
+})
+
+/** 全局守卫：无 token 一律踢回 /login */
+router.beforeEach((to) => {
+	if (to.meta.requiresAuth && !tokenStore.get()){
+		return { path: '/login', query: {redirect: to.fullPath}}
+	}
 })
 
 export default router
