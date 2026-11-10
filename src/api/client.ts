@@ -4,7 +4,7 @@
  * Python 出题官返回裸 JSON（无信封）——解包逻辑不同，混在一起每个调用点都要判断。
  */
 
-import axios from "axios"
+import axios, { type AxiosInstance, type AxiosRequestConfig } from "axios"
 import { ElMessage } from "element-plus"
 import router from '@/router'
 
@@ -16,6 +16,19 @@ export interface ApiResult<T = unknown> {
 	requestId: string
 }
 
+/**
+ * 解包后的实例类型。
+ * 为什么需要它：响应拦截器已经把 Result 信封剥掉、直接返回 data，
+ * 但 TS 仍按 axios 原签名认为返回 AxiosResponse —— 两者不符。
+ * 这里用 Omit 去掉原方法签名，重声明成"一个泛型 = 业务数据类型"。
+ */
+interface UnwrappedInstance extends Omit<AxiosInstance, 'get' | 'post' | 'put' | 'delete'> {
+	get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T>
+	post<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+	put<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+	delete<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T>
+}
+
 const TOKEN_KEY = 'banma_token'
 
 export const tokenStore = {
@@ -25,11 +38,12 @@ export const tokenStore = {
 }
 
 /* ---------- Java 实例（/api 前缀，Result 信封） ---------- */
-export const api = axios.create({baseURL: '/api/banma/v1', timeout: 15_000})
+export const api = axios.create({ baseURL: '/api/banma/v1', timeout: 15_000 }) as UnwrappedInstance
 
-/*在请求体加上token认证*/
+/* 在请求头加上 token 认证 */
 api.interceptors.request.use((cfg) => {
 	const token = tokenStore.get()
+	// Java 侧 Sa-Token 从请求头取 token；无 token 时不加，让后端返回未登录
 	if (token) cfg.headers.Authorization = token
 	return cfg
 })
@@ -54,6 +68,6 @@ api.interceptors.response.use(
 	},
 )
 
-/* ---------- Python 实例（/agent 前缀，裸 JSON） ---------- */
-export const agentApi = axios.create({ baseURL: '/agent', timeout: 60_000 })
-// 出题全链路（简历解析 + 合成）实测 6~9s，15s 会误杀；给 60s
+/* ---------- Python 实例（/agent 前缀，裸 JSON，无信封） ---------- */
+export const agentApi = axios.create({ baseURL: '/agent', timeout: 60_000 }) as UnwrappedInstance
+// 超时给 60s：出题全链路（意图 → 简历解析 → 检索 → 合成）实测 6~9s，15s 会误杀
