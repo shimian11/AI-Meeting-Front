@@ -6,7 +6,7 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
-export default defineConfig(({ model }) => {
+export default defineConfig(({ mode }) => {
 	 /**
 	   * 第三个参数传 '' 表示读取【所有】环境变量（不限 VITE_ 前缀）。
 	   * 这样 BANMA_AGENT_TOKEN 只在 Node 进程里可见，不会进前端 bundle。
@@ -23,7 +23,9 @@ export default defineConfig(({ model }) => {
 			proxy: {
 				// Java 后端
 				'/api': { target: 'http://localhost:8002', changeOrigin: true },
-				// Python 出题官：剥掉 /agent 前缀，并注入内部令牌		
+				// Python 出题官：剥掉 /agent 前缀，并注入内部令牌
+				// 2026-11-12：本机已用 uv 起 Python（uv run uvicorn app.main:app --port 8100），
+				// 故指向 localhost；若要改回测试 VM，换成 http://192.168.100.211:8100
 				'/agent': {
 					target: 'http://localhost:8100',
 					changeOrigin: true,
