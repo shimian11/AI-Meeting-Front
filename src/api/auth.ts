@@ -12,6 +12,13 @@ export interface LoginResult {
   isAdmin: boolean
 }
 
+/** 注册参数（username 由后端写成邮箱，前端只需传 mail + mailCode） */
+export interface RegisterParams {
+	password: string
+	mail: string
+	mailCode: string
+}
+
 /**
  * 账号密码登录
  * @param username 用户名
@@ -23,8 +30,16 @@ export function login(username: string, password: string) {
 }
 
 /**
- * 注册账号（后端注册接口不返回数据，故泛型为 void）
+ * 发送邮箱验证码
+ * 60 秒间隔与日 10 封上限由后端把守，前端倒计时只是体验层
  */
-export function register(username: string, password: string) {
-  return api.post<void>('/users/register', { username, password })
+export function sendMailCode(email:string){
+	return api.post<void>('/users/mail-code', { email, scene: 'register'})
+}
+
+/**
+ * 注册（邮箱 + 密码 + 验证码）
+ */
+export function register(params: RegisterParams) {
+  return api.post<void>('/users/register', params)
 }
