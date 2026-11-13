@@ -46,5 +46,7 @@ export function uploadResume(file: File) {
 	const fd = new FormData()
 	fd.append('file', file)
 	fd.append('bizType', 'resume')
-	return api.post<FileUploaded>('/agent/diles/upload', fd)
+	// 2026-11-13 修正：原路径 '/agent/diles/upload' 有两处笔误（agent→agents、diles→files），
+	// 且漏了 Java 侧的 sessionId 查询参数，实际会 404。
+	return api.post<FileUploaded>('/agents/files/upload', fd)
 }
