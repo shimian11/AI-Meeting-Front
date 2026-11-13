@@ -41,7 +41,7 @@ async function loadQuestions() {
 	errorMsg.value = ''
 	try {
 		const res = await runQuestionOfficer({
-			trace_id: crypto.randomUUID(),
+			// Java 日志 → Python 日志 → steps_trace，前端伪造的 uuid 无法对账
 			session_id: sessionId || crypto.randomUUID(),
 			user_input: '根据我的简历帮我出几道面试题',
 			resume_url: resumeUrl,
