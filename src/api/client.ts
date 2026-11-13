@@ -40,34 +40,52 @@ export const tokenStore = {
 /* ---------- Java 实例（/api 前缀，Result 信封） ---------- */
 export const api = axios.create({ baseURL: '/api/banma/v1', timeout: 15_000 }) as UnwrappedInstance
 
-/* 在请求头加上 token 认证 */
-api.interceptors.request.use((cfg) => {
-	const token = tokenStore.get()
-	// Java 侧 Sa-Token 从请求头取 token；无 token 时不加，让后端返回未登录
-	if (token) cfg.headers.Authorization = token
-	return cfg
-})
+/**
+ * 长耗时实例：给 AI 类接口用（出题实测 6~9s，冷启动可能到 15s+）。
+ *
+ * <p>为什么不直接把 api 的超时调大：普通 CRUD 应该在 15s 内失败——
+ * 拖到 60s 只会让用户多等 45 秒才看到"网络错误"。超时按接口性质分档，而不是一刀切。</p>
+ *
+ * <p>60s 与 Java 侧 {@code ai-guard.stages.interview-extraction.timeout-millis} 对齐：
+ * 两边不一致时，先触发的一方决定错误类型（浏览器超时 vs 业务超时），徒增排查成本。</p>
+ */
+export const apiLong = axios.create({ baseURL: '/api/banma/v1', timeout: 60_000 }) as UnwrappedInstance
 
-api.interceptors.response.use(
-	(resp) => {
-		const body = resp.data as ApiResult
-		if (body.code !== '0'){
-			// 业务失败：HTTP 200 但 code != 0（Sa-Token 未登录等也走这里）
-			ElMessage.error(body.message || '请求失败')
-			if (body.code === '401' || /登录/i.test(body.message)){
-				tokenStore.clear()
-				void router.push('/login')
+/** 两个实例共用同一套拦截器：token 注入 + 信封解包 + 401 跳登录 */
+const applyJavaInterceptors = (instance: AxiosInstance) => {
+	instance.interceptors.request.use((cfg) => {
+		const token = tokenStore.get()
+		// Java 侧 Sa-Token 从请求头取 token；无 token 时不加，让后端返回未登录
+		if (token) cfg.headers.Authorization = token
+		return cfg
+	})
+
+	instance.interceptors.response.use(
+		(resp) => {
+			const body = resp.data as ApiResult
+			if (body.code !== '0') {
+				// 业务失败：HTTP 200 但 code != 0（Sa-Token 未登录等也走这里）
+				ElMessage.error(body.message || '请求失败')
+				if (body.code === '401' || /登录/i.test(body.message)) {
+					tokenStore.clear()
+					void router.push('/login')
+				}
+				return Promise.reject(new Error(body.message))
 			}
-			return Promise.reject(new Error(body.message))
-		}
-		return body.data as never		// 直接返回 data，调用方不用再 .data.data
-	},
-	(err) => {
-		ElMessage.error(err.message || '网络错误')
-		return Promise.reject(err)
-	},
-)
+			return body.data as never		// 直接返回 data，调用方不用再 .data.data
+		},
+		(err) => {
+			ElMessage.error(err.message || '网络错误')
+			return Promise.reject(err)
+		},
+	)
+}
 
-/* ---------- Python 实例（/agent 前缀，裸 JSON，无信封） ---------- */
-export const agentApi = axios.create({ baseURL: '/agent', timeout: 60_000 }) as UnwrappedInstance
-// 超时给 60s：出题全链路（意图 → 简历解析 → 检索 → 合成）实测 6~9s，15s 会误杀
+applyJavaInterceptors(api)
+applyJavaInterceptors(apiLong)
+
+/* ---------- 已移除 agentApi（2026-11-13） ----------
+ * 原因：前端不再直连 Python。出题走 Java 网关（/api/banma/v1/interview/agent/question-officer），
+ * 由 Java 注入内部令牌并转发 Python。这样生产环境无需在 Nginx/Vite 里配令牌注入，
+ * 也顺带恢复了 Java 侧的限流/熔断/trace。
+ */
