@@ -81,3 +81,13 @@ export function listReports(pageNum = 1, pageSize = 20) {
 export function getReportDetail(sessionId: string) {
 	return api.get<ReportDetail>(`/interview/interview/record/${sessionId}`)
 }
+
+/** 推进到下一题：返回结构与当前题一致 */
+export function advanceQuestion(sessionId: string) {
+	return api.get<CurrentQuestionResp>(`/interview/sessions/${sessionId}/next-question`)
+}
+
+/** 断线恢复：无快照时后端可能返回 null 或抛错，调用方忽略即可 */
+export function restoreSession(sessionId: string) {
+	return api.get<CurrentQuestionResp | null>(`/interview/sessions/${sessionId}/restore`)
+}
