@@ -1,36 +1,125 @@
 @import "tailwindcss";
-@import './base.css';
 
-#app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  font-weight: normal;
+/*
+ * 斑马云面试 · 设计令牌（cream 配方，对齐 docs/front/prototype/index.html :root）
+ *
+ * 三条铁律（AGENT.md §6.1）：
+ *   1. 撞色只给「分数 / 进度 / 主按钮 / 判定章」，面积不超过 5%
+ *   2. 正文 16.5px / 行高 1.9 / 字重 500；字号下限 11px
+ *   3. 展示字用衬线 700、字距 0（中文禁用负字距）
+ */
+@theme {
+	--color-paper: #f5efea;
+	--color-paper-hi: #fdfaf7;
+	--color-surface-2: #ece2d9;
+
+	--color-ink: #122e8a;
+	--color-ink-2: #2b4390;
+	--color-muted: #5d6288;
+
+	--color-rule: rgba(18, 46, 138, 0.16);
+	--color-rule-strong: rgba(18, 46, 138, 0.32);
+
+	--color-accent: #122e8a;
+	--color-accent-hover: #0b2065;
+	--color-accent-soft: rgba(18, 46, 138, 0.07);
+	--color-ink-paper: #f5efea;
+	--color-danger: #b23a26;
+	--color-success: #1f7a4d;
+
+	--font-display: "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, SimSun, Georgia, serif;
+	--font-body: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+	--font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", Consolas, "Courier New", monospace;
+
+	--radius-panel: 3px;
+	--radius-tag: 2px;
 }
 
-a,
-.green {
-  text-decoration: none;
-  color: hsla(160, 100%, 37%, 1);
-  transition: 0.4s;
-  padding: 3px;
-}
+@layer base {
+	html,
+	body,
+	#app {
+		height: 100%;
+	}
 
-@media (hover: hover) {
-  a:hover {
-    background-color: hsla(160, 100%, 37%, 0.2);
-  }
-}
+	body {
+		margin: 0;
+		background: var(--color-paper);
+		color: var(--color-ink);
+		font-family: var(--font-body);
+		font-size: 16.5px;
+		line-height: 1.9;
+		font-weight: 500;
+		-webkit-font-smoothing: antialiased;
+	}
 
-@media (min-width: 1024px) {
-  body {
-    display: flex;
-    place-items: center;
-  }
+	h1,
+	h2,
+	h3 {
+		font-family: var(--font-display);
+		font-weight: 700;
+		letter-spacing: 0;
+		color: var(--color-ink);
+		margin: 0;
+	}
 
-  #app {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    padding: 0 2rem;
-  }
+	/* 等宽标签：字距 .04~.10em，用于卷号 / 数据 / 表头 */
+	.mono-label {
+		font-family: var(--font-mono);
+		letter-spacing: 0.06em;
+		font-size: 12px;
+		color: var(--color-muted);
+		text-transform: uppercase;
+	}
+
+	/* 面板：奶白纸面 + 1px 墨色细边，无投影（原型不使用阴影） */
+	.panel {
+		background: var(--color-paper-hi);
+		border: 1px solid var(--color-rule);
+		border-radius: var(--radius-panel);
+	}
+
+	/* 次按钮：描边款 */
+	.btn-ghost {
+		border: 1px solid var(--color-rule-strong);
+		border-radius: var(--radius-tag);
+		padding: 6px 16px;
+		color: var(--color-ink);
+		background: transparent;
+		transition: background-color 0.2s;
+	}
+
+	.btn-ghost:hover:not(:disabled) {
+		background: var(--color-accent-soft);
+	}
+
+	.btn-ghost:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	/* 主按钮：全站唯一实心蓝，只给「推进流程」的动作 */
+	.btn-primary {
+		background: var(--color-accent);
+		color: var(--color-ink-paper);
+		border-radius: var(--radius-tag);
+		padding: 8px 22px;
+		border: 1px solid var(--color-accent);
+		transition: background-color 0.2s;
+	}
+
+	.btn-primary:hover:not(:disabled) {
+		background: var(--color-accent-hover);
+	}
+
+	.btn-primary:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	/* 细分割线 */
+	.rule {
+		height: 1px;
+		background: var(--color-rule);
+	}
 }
