@@ -11,6 +11,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type UploadFile, type UploadInstance, type UploadProps, type UploadUserFile } from 'element-plus'
 import { createSession, uploadResume, type FileUploaded } from '@/api/interview'
+import PageHeader from '@/components/ui/PageHeader.vue'
 
 
 const router = useRouter()
@@ -28,6 +29,17 @@ const uploadRef = ref<UploadInstance>()
 
 /** 开始按钮是否可用：必须上传完成 */
 const canStart = computed(() => phase.value === 'uploaded' && !!uploaded.value)
+
+/** 能力卡文案（静态展示） */
+const capabilities = [
+	{ title: '简历评估', desc: '0~100 评分，附 3~5 条改进建议' },
+	{ title: '定制出题', desc: '题库检索 + 简历定制，约 10 道' },
+	{ title: '动态追问', desc: '答得越好，追问层次越深' },
+	{ title: '能力报告', desc: '五维雷达 + 逐题复盘' },
+]
+
+/** 右侧流程说明（静态展示） */
+const steps = ['上传简历，AI 解析并出题', '逐题作答，可能被追问', '生成能力报告与建议']
 
 /* ---------- 方法 ---------- */
 
@@ -108,82 +120,66 @@ async function onStart() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl px-6 py-10">
-      <div class="grid gap-8 md:grid-cols-[1fr_280px]">
-        <!-- 主区：标题说明 + 能力卡 + 上传 + CTA -->
-        <section>
-          <h1 class="text-3xl font-bold">AI 模拟面试</h1>
-          <p class="mt-3 leading-relaxed text-gray-600">
-            上传你的简历，AI 面试官会结合简历内容与题库为你定制一组面试题。
-            逐题作答后，可获得多维度能力评估报告。
-          </p>
-  
-          <!-- 能力卡 2×2：静态介绍，不参与交互 -->
-          <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <el-card shadow="never">
-              <div class="font-semibold">简历评估</div>
-              <p class="mt-1 text-sm text-gray-500">0~100 评分 + 3~5 条改进建议</p>
-            </el-card>
-            <el-card shadow="never">
-              <div class="font-semibold">定制出题</div>
-              <p class="mt-1 text-sm text-gray-500">题库检索 + 简历定制，约 10 道</p>
-            </el-card>
-            <el-card shadow="never">
-              <div class="font-semibold">动态追问</div>
-              <p class="mt-1 text-sm text-gray-500">答得越好，追问层次越深</p>
-            </el-card>
-            <el-card shadow="never">
-              <div class="font-semibold">能力报告</div>
-              <p class="mt-1 text-sm text-gray-500">五维雷达 + 逐题复盘</p>
-            </el-card>
-          </div>
-  
-          <!-- 上传区：drag 拖拽 + 点击选择；http-request 接管真实上传 -->
-          <div class="mt-8">
-            <el-upload
-              ref="uploadRef"
-              v-model:file-list="resumeFile"
-              class="w-full"
-              drag
-              accept=".pdf"
-              :limit="1"
-              :before-upload="beforeUpload"
-              :http-request="customUpload"
-              :on-remove="onRemove"
-            >
-              <div class="py-6 text-center">
-                <p class="text-gray-600">把简历拖到这里，或点击选择文件</p>
-                <p class="mt-1 text-xs text-gray-400">仅支持 PDF，最大 20MB</p>
-              </div>
-            </el-upload>
-          </div>
-  
-          <!-- CTA：上传完成前禁用，文案随状态变化 -->
-          <el-button
-            type="primary"
-            size="large"
-            class="mt-6"
-            :disabled="!canStart"
-            :loading="phase === 'uploading'"
-            data-test="btn-start"
-            @click="onStart"
-          >
-            {{ phase === 'uploaded' ? '开始面试' : '请先上传简历' }}
-          </el-button>
-        </section>
-  
-        <!-- 右侧辅助栏：流程说明（静态） -->
-        <aside class="h-fit rounded-lg bg-gray-50 p-5 text-sm">
-          <h3 class="font-semibold text-gray-800">流程</h3>
-          <ol class="mt-3 list-inside list-decimal space-y-2 text-gray-600">
-            <li>上传简历，AI 解析并出题</li>
-            <li>逐题作答，可能被追问</li>
-            <li>生成能力报告与建议</li>
-          </ol>
-          <div class="mt-5 border-t border-gray-200 pt-4 text-xs text-gray-400">
-            预计耗时 15~25 分钟
-          </div>
-        </aside>
-      </div>
-    </div>
+	<div>
+		<PageHeader
+			kicker="AI INTERVIEW / 面试登记"
+			title="AI 模拟面试"
+			desc="上传简历后，面试官会结合简历内容与题库定制一组题目。逐题作答，结束时给出多维能力报告。"
+		/>
+
+		<div class="grid gap-10 lg:grid-cols-[minmax(0,1fr)_260px]">
+			<section>
+				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+					<div v-for="cap in capabilities" :key="cap.title" class="panel px-5 py-4">
+						<div class="font-display text-[15px] text-ink">{{ cap.title }}</div>
+						<p class="mt-1 text-[12px] leading-[1.7] text-muted">{{ cap.desc }}</p>
+					</div>
+				</div>
+
+				<div class="rule my-8" />
+
+				<div class="mono-label mb-3">简历上传</div>
+				<el-upload
+					ref="uploadRef"
+					v-model:file-list="resumeFile"
+					class="intro-upload w-full"
+					drag
+					accept=".pdf"
+					:limit="1"
+					:before-upload="beforeUpload"
+					:http-request="customUpload"
+					:on-remove="onRemove"
+				>
+					<div class="px-6 py-10 text-center">
+						<p class="text-[14px] text-ink">把简历拖到这里，或点击选择</p>
+						<p class="mono-label mt-2">PDF ONLY · MAX 20MB</p>
+					</div>
+				</el-upload>
+
+				<div class="mt-8 flex items-center gap-4">
+					<button
+						class="btn-primary text-[15px]"
+						:disabled="!canStart"
+						data-test="btn-start"
+						@click="onStart"
+					>
+						{{ phase === 'uploading' ? '上传中…' : phase === 'uploaded' ? '开始面试' : '请先上传简历' }}
+					</button>
+					<span v-if="uploaded" class="mono-label">已就绪 · {{ uploaded.fileName ?? '简历.pdf' }}</span>
+				</div>
+			</section>
+
+			<aside class="h-fit">
+				<div class="mono-label mb-3">流程</div>
+				<ol class="m-0 list-none space-y-4 p-0">
+					<li v-for="(step, idx) in steps" :key="step" class="flex gap-3">
+						<span class="mt-[3px] font-mono text-[11px] text-muted">{{ String(idx + 1).padStart(2, '0') }}</span>
+						<span class="text-[13px] leading-[1.7] text-ink-2">{{ step }}</span>
+					</li>
+				</ol>
+				<div class="rule my-6" />
+				<div class="mono-label">预计 15~25 分钟</div>
+			</aside>
+		</div>
+	</div>
 </template>
