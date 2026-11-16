@@ -10,9 +10,8 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ElMessage } from 'element-plus'
 import { runQuestionOfficer, type OfficerResponse } from '@/api/agent'
-import { getCurrentQuestion, submitAnswer } from '@/api/interview'
+import { advanceQuestion, getCurrentQuestion, restoreSession, submitAnswer } from '@/api/interview'
 import type { AnswerResp, CurrentQuestionResp } from '@/api/types'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import ScoreBadge from '@/components/ui/ScoreBadge.vue'
@@ -77,16 +76,12 @@ function sourceLabel(src: OfficerResponse['questions_source']) {
 	return { 'kb+resume': '题库 + 简历定制', resume_only: '仅简历定制', none: '通用题库为空，由模型生成' }[src]
 }
 
-/* ══════════════════════════════════════════════════════════
- * ⚠️ 代写（R16 例外，2026-11-15）：为让页面直接对真接口跑通，下面这段
- *    「当前题 + 提交答案」流程由 Agent 代写。它属于你的手敲范围，
- *    改写时保持函数名（loadCurrent / onSubmit）即可，模板不用动。
- * ══════════════════════════════════════════════════════════ */
 const activeIndex = ref(0)
 const current = ref<CurrentQuestionResp | null>(null)
 const answer = ref('')
 const scored = ref<AnswerResp | null>(null)
 const submitting = ref(false)
+const followUp = ref<string | null>(null)
 
 /** 拉当前题：接口没返回值时退回出题官给的题目列表，避免白屏 */
 async function loadCurrent() {
@@ -110,20 +105,48 @@ async function onSubmit() {
 	submitting.value = true
 	try {
 		scored.value = await submitAnswer(sessionId, { answer: answer.value })
+		
+		if (scored.value.followUpNeeded && scored.value.followUpQuestion) {
+			followUp.value = scored.value.followUpQuestion
+			answer.value = ''		// 换一题作答，清空输入避免误答
+		} else if (scored.value.finished) {
+			void router.push(`/interview/report/${sessionId}`)  //已到最后一题   -》   报告
+		}
 	} finally {
 		submitting.value = false
 	}
 }
 
-/** 下一题：接口就绪后换成推进游标 + 重新拉题 */
-function onNext() {
-	activeIndex.value += 1
-	void loadCurrent()
+/** 下一题：advanceQuestion 已返回新题，无需再拉一次 */
+async function onNext() {
+	followUp.value = null
+	scored.value = null
+	answer.value = ''
+	try {
+		current.value = await advanceQuestion(sessionId)
+		if (current.value) activeIndex.value = current.value.questionNumber - 1
+	} catch {
+		/* 已到最后一题时后端会拒绝，交给 finished 分支处理 */
+	}
 }
 
-// 进页面立刻出题
-onMounted(() => {
-  void loadQuestions()
+/**
+ * 进页面：先出题（渲染题目列表），再尝试从快照恢复游标。
+ *
+ * <p>必须串行：两个 onMounted 并行时，restore 的网络请求可能晚于出题返回，
+ * 会把已经渲染好的题号覆盖成快照值，表现为「刚进来是第 1 题，一秒后跳到第 5 题」。</p>
+ */
+onMounted(async () => {
+	await loadQuestions()
+	try {
+		const restored = await restoreSession(sessionId)
+		if (restored?.questionNumber) {
+			activeIndex.value = restored.questionNumber - 1
+			current.value = restored
+		}
+	} catch {
+		/* 无快照属正常，忽略 */
+	}
 })
 </script>
 
@@ -243,11 +266,18 @@ onMounted(() => {
 							</div>
 							<div class="rule my-5" />
 							<p class="text-[14px] leading-[1.9] text-ink-2">{{ scored.feedback }}</p>
-							<ul v-if="scored.missing.length" class="m-0 mt-3 list-none space-y-1 p-0">
-								<li v-for="m in scored.missing" :key="m" class="text-[12px] leading-[1.7] text-danger">· {{ m }}</li>
+							<ul v-if="scored.missingPoints.length" class="m-0 mt-3 list-none space-y-1 p-0">
+								<li v-for="m in scored.missingPoints" :key="m" class="text-[12px] leading-[1.7] text-danger">· {{ m }}</li>
 							</ul>
 							<div class="rule my-5" />
 							<p class="mono-label">评分结果来自 POST /interview/answer</p>
+						</article>
+
+						<!-- 追问：后端 followUpNeeded=true 时展示，答完追问才推进题号 -->
+						<article v-if="followUp" class="panel mt-4 border-rule-strong px-7 py-6">
+							<div class="mono-label">追问</div>
+							<p class="mt-2 text-[15px] leading-[1.9] text-ink">{{ followUp }}</p>
+							<p class="mono-label mt-4">接着答这一问，提交后会重新评分</p>
 						</article>
 
 						<footer class="mt-8">
