@@ -8,10 +8,14 @@
  *
  * 状态机：loading → ready / error
  */
-import { onMounted,ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus'
 import { runQuestionOfficer, type OfficerResponse } from '@/api/agent'
+import { getCurrentQuestion, submitAnswer } from '@/api/interview'
+import type { AnswerResp, CurrentQuestionResp } from '@/api/types'
+import PageHeader from '@/components/ui/PageHeader.vue'
+import ScoreBadge from '@/components/ui/ScoreBadge.vue'
 
 
 const route = useRoute()
@@ -19,7 +23,7 @@ const router = useRouter()
 
 /* ---------- 路由参数 ---------- */
 const sessionId = String(route.params.sessionId ?? '')
-const resumeUrl = (route.query.resumeUrl as String | undefined) ?? null
+const resumeUrl = (route.query.resumeUrl as string | undefined) ?? null
 
 /* ---------- 状态 ---------- */
 const phase = ref<'loading'| 'ready' | 'error'>('loading')
@@ -50,6 +54,7 @@ async function loadQuestions() {
 		})
 		result.value = res
 		phase.value = 'ready'
+		void loadCurrent()
 	} catch (e) {
 		// axios 拦截器已弹过网络错误提示，这里只负责页面态与重试入口
 		errorMsg.value = e instanceof Error ? e.message : '出题失败'
@@ -72,6 +77,50 @@ function sourceLabel(src: OfficerResponse['questions_source']) {
 	return { 'kb+resume': '题库 + 简历定制', resume_only: '仅简历定制', none: '通用题库为空，由模型生成' }[src]
 }
 
+/* ══════════════════════════════════════════════════════════
+ * ⚠️ 代写（R16 例外，2026-11-15）：为让页面直接对真接口跑通，下面这段
+ *    「当前题 + 提交答案」流程由 Agent 代写。它属于你的手敲范围，
+ *    改写时保持函数名（loadCurrent / onSubmit）即可，模板不用动。
+ * ══════════════════════════════════════════════════════════ */
+const activeIndex = ref(0)
+const current = ref<CurrentQuestionResp | null>(null)
+const answer = ref('')
+const scored = ref<AnswerResp | null>(null)
+const submitting = ref(false)
+
+/** 拉当前题：接口没返回值时退回出题官给的题目列表，避免白屏 */
+async function loadCurrent() {
+	try {
+		current.value = await getCurrentQuestion(sessionId)
+	} catch {
+		current.value = null
+	}
+	answer.value = ''
+	scored.value = null
+}
+
+/** 当前展示的题干：优先后端当前题，其次本地题目列表 */
+const activeQuestion = computed(() => {
+	if (current.value?.question) return current.value.question
+	return result.value?.questions?.[activeIndex.value] ?? ''
+})
+
+async function onSubmit() {
+	if (!answer.value.trim() || submitting.value) return
+	submitting.value = true
+	try {
+		scored.value = await submitAnswer(sessionId, { answer: answer.value })
+	} finally {
+		submitting.value = false
+	}
+}
+
+/** 下一题：接口就绪后换成推进游标 + 重新拉题 */
+function onNext() {
+	activeIndex.value += 1
+	void loadCurrent()
+}
+
 // 进页面立刻出题
 onMounted(() => {
   void loadQuestions()
@@ -79,109 +128,137 @@ onMounted(() => {
 </script>
 
 <template>
-	<div class="mx-auto max-w-4xl px-6 py-10">
-	    <!-- 顶部：会话信息 -->
-	    <header class="mb-6 flex items-center justify-between border-b pb-4">
-	      <div>
-	        <h1 class="text-2xl font-bold">模拟面试</h1>
-	        <p class="mt-1 text-xs text-gray-400">会话 {{ sessionId || '（本地调试）' }}</p>
-	      </div>
-	      <el-button text @click="onBack">重新上传简历</el-button>
-	    </header>
-	
-	    <!-- 加载态：三段式准备卡 -->
-	    <div v-if="phase === 'loading'" class="rounded-lg border border-gray-200 p-8">
-	      <h2 class="text-lg font-semibold">AI 正在为你准备面试</h2>
-	      <!-- 三段进度：第 1 段已知完成（简历已上传），后两段在接口内完成 -->
-	      <ol class="mt-5 space-y-4">
-	        <li class="flex items-center gap-3">
-	          <el-icon class="text-green-500"><i-ep-check /></el-icon>
-	          <span>简历已上传</span>
-	        </li>
-	        <li class="flex items-center gap-3 text-gray-700">
-	          <el-icon class="is-loading text-blue-500"><i-ep-loading /></el-icon>
-	          <span>解析简历并检索题库</span>
-	        </li>
-	        <li class="flex items-center gap-3 text-gray-400">
-	          <el-icon><i-ep-more /></el-icon>
-	          <span>生成面试题</span>
-	        </li>
-	      </ol>
-	      <p class="mt-6 text-sm text-gray-500">
-	        全链路约 6~9 秒（意图识别 → 简历解析 → 题库检索 → 合成），请稍候
-	      </p>
-	      <!-- 骨架屏：避免白屏，让用户知道有内容即将出现 -->
-	      <el-skeleton class="mt-6" :rows="4" animated />
-	    </div>
-	
-	    <!-- 错误态：保留重试入口 -->
-	    <div v-else-if="phase === 'error'" class="rounded-lg border border-red-200 bg-red-50 p-8">
-	      <h2 class="text-lg font-semibold text-red-700">出题失败</h2>
-	      <p class="mt-2 text-sm text-red-600">{{ errorMsg }}</p>
-	      <div class="mt-5 flex gap-3">
-	        <el-button type="primary" @click="onRetry">重试</el-button>
-	        <el-button @click="onBack">返回上传页</el-button>
-	      </div>
-	      <p class="mt-4 text-xs text-gray-500">
-	        常见原因：Python 服务未启动（:8100）、内部令牌不匹配、简历 URL 过期
-	      </p>
-	    </div>
-	
-	    <!-- 就绪态：简历评估 + 题目列表 -->
-	    <div v-else-if="result">
-	      <!-- 闲聊分支：不展示题目 -->
-	      <el-alert v-if="result.intent === 'SMALL_TALK'" type="info" :closable="false">
-	        {{ result.small_talk || '（闲聊回复）' }}
-	      </el-alert>
-	
-	      <template v-else>
-	        <!-- 简历评估卡：仅有简历时才有分数 -->
-	        <section v-if="result.resume_score !== null" class="mb-6 rounded-lg bg-gray-50 p-5">
-	          <div class="flex items-baseline gap-3">
-	            <span class="text-3xl font-bold">{{ result.resume_score }}</span>
-	            <span class="text-sm text-gray-500">/ 100 简历评分</span>
-	            <el-tag v-if="result.resume_type" size="small" class="ml-auto">
-	              {{ result.resume_type }}
-	            </el-tag>
-	          </div>
-	          <ul v-if="result.resume_suggest.length" class="mt-3 list-inside list-disc space-y-1 text-sm text-gray-600">
-	            <li v-for="(s, i) in result.resume_suggest" :key="i">{{ s }}</li>
-	          </ul>
-	        </section>
-	
-	        <!-- 题目列表 -->
-	        <section>
-	          <div class="mb-3 flex items-center justify-between">
-	            <h2 class="text-lg font-semibold">
-	              共 {{ result.questions.length }} 道题
-	            </h2>
-	            <el-tag size="small" type="info">{{ sourceLabel(result.questions_source) }}</el-tag>
-	          </div>
-	
-	          <ol class="space-y-3">
-	            <li
-	              v-for="(q, i) in result.questions"
-	              :key="i"
-	              class="rounded-lg border border-gray-200 p-4 leading-relaxed"
-	            >
-	              <span class="mr-2 font-semibold text-gray-400">{{ i + 1 }}.</span>{{ q }}
-	            </li>
-	          </ol>
-	        </section>
-	
-	        <!-- 耗时明细：来自后端 steps_trace，用于自查性能 -->
-	        <footer class="mt-8 rounded-lg bg-gray-50 p-4 text-xs text-gray-500">
-	          <span class="font-medium">耗时</span>
-	          <span v-for="(ms, k) in result.steps_trace" :key="k" class="ml-3">
-	            {{ k }}: {{ ms }}ms
-	          </span>
-	        </footer>
-	
-	        <!-- 后半入口：答题功能未实现，先禁用 -->
-	        <el-button type="primary" size="large" class="mt-6" disabled>
-	          开始答题（7C2 后半实现）
-	        </el-button>
-	      </template>
-	    </div>
-	  </div>
+	<div>
+		<PageHeader kicker="INTERVIEW / 面试间" title="模拟面试" :desc="`会话 ${sessionId || '（本地调试）'}`">
+			<template #actions>
+				<button class="btn-ghost text-[13px]" @click="onBack">重新上传简历</button>
+			</template>
+		</PageHeader>
+
+		<!-- 加载态：三段式进度 + 骨架 -->
+		<section v-if="phase === 'loading'" class="panel px-8 py-10">
+			<h2 class="text-[17px]">AI 正在为你准备面试</h2>
+			<ol class="mt-6 list-none space-y-4 p-0">
+				<li v-for="(step, i) in ['简历已上传', '解析简历并检索题库', '生成面试题']" :key="step" class="flex items-center gap-3">
+					<span class="font-mono text-[11px]" :class="i === 0 ? 'text-success' : i === 1 ? 'text-ink' : 'text-muted'">
+						{{ i === 0 ? '✓' : String(i + 1).padStart(2, '0') }}
+					</span>
+					<span class="text-[14px]" :class="i === 2 ? 'text-muted' : 'text-ink-2'">{{ step }}</span>
+				</li>
+			</ol>
+			<div class="rule my-6" />
+			<p class="mono-label">全链路约 6~9 秒 · 意图 → 简历解析 → 题库检索 → 合成</p>
+			<div class="mt-6 space-y-3">
+				<div v-for="n in 4" :key="n" class="h-3 animate-pulse rounded-[2px] bg-surface-2" :style="{ width: `${92 - n * 12}%` }" />
+			</div>
+		</section>
+
+		<!-- 错误态 -->
+		<section v-else-if="phase === 'error'" class="panel border-danger px-8 py-10">
+			<h2 class="text-[17px] text-danger">出题失败</h2>
+			<p class="mt-2 text-[13px] leading-[1.8] text-ink-2">{{ errorMsg }}</p>
+			<div class="mt-6 flex gap-3">
+				<button class="btn-primary text-[14px]" @click="onRetry">重试</button>
+				<button class="btn-ghost text-[14px]" @click="onBack">返回上传页</button>
+			</div>
+			<div class="rule my-6" />
+			<p class="mono-label">常见原因 · Python 未启动(8100) · 内部令牌不匹配 · 简历 URL 过期</p>
+		</section>
+
+		<!-- 就绪态 -->
+		<template v-else-if="result">
+			<!-- 闲聊分支 -->
+			<section v-if="result.intent === 'SMALL_TALK'" class="panel px-8 py-10">
+				<p class="text-[15px] leading-[1.9] text-ink-2">{{ result.small_talk || '（闲聊回复）' }}</p>
+			</section>
+
+			<template v-else>
+				<!-- 简历评估条 -->
+				<section v-if="result.resume_score !== null" class="panel mb-8 flex items-center gap-6 px-6 py-5">
+					<div>
+						<div class="mono-label">简历评分</div>
+						<div class="mt-1 flex items-end gap-2">
+							<span class="font-mono text-[32px] leading-none tabular-nums">{{ result.resume_score }}</span>
+							<span class="mb-1 text-[11px] text-muted">/ 100</span>
+						</div>
+					</div>
+					<div class="rule h-12 w-px shrink-0 self-center" style="width: 1px" />
+					<ul class="m-0 min-w-0 flex-1 list-none space-y-1 p-0">
+						<li v-for="(s, i) in result.resume_suggest" :key="i" class="text-[12px] leading-[1.7] text-muted">· {{ s }}</li>
+					</ul>
+					<span v-if="result.resume_type" class="mono-label shrink-0">{{ result.resume_type }}</span>
+				</section>
+
+				<div class="grid gap-8 lg:grid-cols-[200px_minmax(0,1fr)]">
+					<!-- 左：题号列表 -->
+					<aside>
+						<div class="mono-label mb-3">题目 · {{ result.questions.length }}</div>
+						<ol class="m-0 list-none space-y-1 p-0">
+							<li v-for="(q, i) in result.questions" :key="i">
+								<button
+									class="flex w-full items-center gap-3 rounded-[2px] px-3 py-2 text-left transition-colors hover:bg-accent-soft"
+									:class="i === activeIndex ? 'bg-accent-soft' : ''"
+									@click="activeIndex = i; scored = null"
+								>
+									<span class="font-mono text-[11px]" :class="i === activeIndex ? 'text-ink' : 'text-muted'">{{ String(i + 1).padStart(2, '0') }}</span>
+									<span class="truncate text-[13px]" :class="i === activeIndex ? 'text-ink' : 'text-muted'">{{ q }}</span>
+								</button>
+							</li>
+						</ol>
+						<div class="rule my-5" />
+						<div class="mono-label">来源</div>
+						<div class="mt-1 text-[12px] leading-[1.7] text-muted">{{ sourceLabel(result.questions_source) }}</div>
+					</aside>
+
+					<!-- 右：当前题 + 作答 + 评分 -->
+					<section>
+						<article class="panel px-7 py-6">
+							<div class="mono-label">第 {{ String((current?.questionNumber ?? activeIndex + 1)).padStart(2, '0') }} 题</div>
+							<h2 class="mt-2 text-[19px] leading-[1.7]">{{ activeQuestion }}</h2>
+						</article>
+
+						<div class="mt-6">
+							<label class="mono-label" for="answer">你的回答</label>
+							<textarea
+								id="answer"
+								v-model="answer"
+								rows="7"
+								placeholder="先说结论，再说依据，最后补边界与例子。"
+								class="mt-2 w-full resize-y rounded-[3px] border border-rule bg-paper-hi px-4 py-3 text-[15px] leading-[1.9] text-ink outline-none focus:border-rule-strong"
+							/>
+							<div class="mt-3 flex items-center gap-4">
+								<button class="btn-primary text-[14px]" :disabled="!answer.trim() || submitting" @click="onSubmit">{{ submitting ? '评分中…' : '提交本题' }}</button>
+								<span class="mono-label">{{ answer.length }} 字</span>
+							</div>
+						</div>
+
+						<!-- 评分回显卡（版式占位，数据待接 answer 接口） -->
+						<article v-if="scored" class="panel mt-6 px-7 py-6">
+							<div class="flex items-center gap-4">
+								<ScoreBadge :score="scored.score" size="lg" />
+								<div>
+									<div class="mono-label">本题得分</div>
+									<div class="text-[13px] text-muted">满分 100</div>
+								</div>
+							</div>
+							<div class="rule my-5" />
+							<p class="text-[14px] leading-[1.9] text-ink-2">{{ scored.feedback }}</p>
+							<ul v-if="scored.missing.length" class="m-0 mt-3 list-none space-y-1 p-0">
+								<li v-for="m in scored.missing" :key="m" class="text-[12px] leading-[1.7] text-danger">· {{ m }}</li>
+							</ul>
+							<div class="rule my-5" />
+							<p class="mono-label">评分结果来自 POST /interview/answer</p>
+						</article>
+
+						<footer class="mt-8">
+							<div class="mono-label">耗时</div>
+							<div class="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+								<span v-for="(ms, k) in result.steps_trace" :key="k" class="font-mono text-[11px] text-muted">{{ k }} {{ ms }}ms</span>
+							</div>
+						</footer>
+					</section>
+				</div>
+			</template>
+		</template>
+	</div>
 </template>
