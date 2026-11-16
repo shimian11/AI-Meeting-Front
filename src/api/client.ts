@@ -38,21 +38,17 @@ export const tokenStore = {
 }
 
 /* ---------- Java 实例（/api 前缀，Result 信封） ---------- */
-export const api = axios.create({ baseURL: '/api/banma/v1', timeout: 15_000 }) as UnwrappedInstance
 
 /**
- * 长耗时实例：给 AI 类接口用（出题实测 6~9s，冷启动可能到 15s+）。
+ * 两个实例共用同一套拦截器：token 注入 + 信封解包 + 401 跳登录。
  *
- * <p>为什么不直接把 api 的超时调大：普通 CRUD 应该在 15s 内失败——
- * 拖到 60s 只会让用户多等 45 秒才看到"网络错误"。超时按接口性质分档，而不是一刀切。</p>
- *
- * <p>60s 与 Java 侧 {@code ai-guard.stages.interview-extraction.timeout-millis} 对齐：
- * 两边不一致时，先触发的一方决定错误类型（浏览器超时 vs 业务超时），徒增排查成本。</p>
+ * <p>为什么先建裸 AxiosInstance、装配完再断言成 UnwrappedInstance：
+ * 拦截器挂载必须在类型别修正之前完成（`UnwrappedInstance` 用 Omit 去掉了
+ * 原始方法签名，无法再传给 `interceptors.use`）。</p>
  */
-export const apiLong = axios.create({ baseURL: '/api/banma/v1', timeout: 60_000 }) as UnwrappedInstance
+function createJavaApi(timeout: number): UnwrappedInstance {
+	const instance = axios.create({ baseURL: '/api/banma/v1', timeout })
 
-/** 两个实例共用同一套拦截器：token 注入 + 信封解包 + 401 跳登录 */
-const applyJavaInterceptors = (instance: AxiosInstance) => {
 	instance.interceptors.request.use((cfg) => {
 		const token = tokenStore.get()
 		// Java 侧 Sa-Token 从请求头取 token；无 token 时不加，让后端返回未登录
@@ -79,10 +75,23 @@ const applyJavaInterceptors = (instance: AxiosInstance) => {
 			return Promise.reject(err)
 		},
 	)
+
+	return instance as unknown as UnwrappedInstance
 }
 
-applyJavaInterceptors(api)
-applyJavaInterceptors(apiLong)
+/** 普通 CRUD：15s 内失败，避免用户干等 */
+export const api = createJavaApi(15_000)
+
+/**
+ * 长耗时实例：给 AI 类接口用（出题实测 6~9s，冷启动可能到 15s+）。
+ *
+ * <p>为什么不直接把 api 的超时调大：普通 CRUD 应该 15s 内失败——
+ * 拖到 60s 只会让用户多等 45 秒才看到"网络错误"。超时按接口性质分档，而不是一刀切。</p>
+ *
+ * <p>60s 与 Java 侧 {@code ai-guard.stages.interview-extraction.timeout-millis} 对齐：
+ * 两边不一致时，先触发的一方决定错误类型（浏览器超时 vs 业务超时），徒增排查成本。</p>
+ */
+export const apiLong = createJavaApi(60_000)
 
 /* ---------- 已移除 agentApi（2026-11-13） ----------
  * 原因：前端不再直连 Python。出题走 Java 网关（/api/banma/v1/interview/agent/question-officer），
