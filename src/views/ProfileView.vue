@@ -22,6 +22,10 @@ const activeTab = ref<(typeof tabs)[number]['key']>('resume')
 const resumes = ref([
 	{ name: '简历_2026_Java后端.pdf', size: '412 KB', uploadedAt: '2026-11-13' },
 ])
+
+// 简历库：GET /users/{username}/resumes  →  { id, name, size, uploadedAt }
+// 目标：GET/PUT /users/{username}/goal     →  { direction, level }
+// 知识库：GET /knowledge/documents         →  { id, title, chunks, updatedAt }
 </script>
 
 <template>
