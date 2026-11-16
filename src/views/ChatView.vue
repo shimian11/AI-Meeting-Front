@@ -1,8 +1,6 @@
 <script setup lang="ts">
 /**
- * AI 对话（7C3）——静态壳。
- *
- * ⚠️ 手敲范围（R16）：SSE 消费由用户实现。
+ * AI 对话
  *    Java 侧 `POST /agents/sessions/{id}/chat` 当前是桩（通用对话流式未接入），
  *    因此本轮只交版式：
  *      1. 消息流（用户右 / 助手左）
@@ -10,8 +8,10 @@
  *      3. 输入区与发送态
  *    接入时把 `messages` 换成真实会话数据，`onSend` 里接 EventSource/fetch-stream。
  */
-import { nextTick, ref } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import { tokenStore, api } from '@/api/client'
 
 interface Msg {
 	role: 'user' | 'assistant'
@@ -25,29 +25,77 @@ const messages = ref<Msg[]>([
 ])
 const draft = ref('')
 const listEl = ref<HTMLElement | null>(null)
+/** 发送中：防止重复提交，同时驱动按钮禁用态 */
+const sending = ref(false)
+/** 会话 id：进页面时创建（后端 POST /agents/sessions） */
+const sessionId = ref('')
+
+/** 建会话：SSE 需要一个 sessionId 才能续接历史 */
+onMounted(async () => {
+	try {
+		const s = await api.post<{ sessionId: string }>('/agents/sessions', {})
+		sessionId.value = s.sessionId
+	} catch {
+		/* 建会话失败时发送按钮可点，但发送会报错——错误交给拦截器提示 */
+	}
+})
 
 async function scrollToBottom() {
 	await nextTick()
 	if (listEl.value) listEl.value.scrollTop = listEl.value.scrollHeight
 }
 
-/** ⚠️ 待你实现：接 SSE（Java /agents/sessions/{id}/chat） */
+/** 发送并消费 SSE 事件流 */
 async function onSend() {
 	const text = draft.value.trim()
-	if (!text) return
+	if (!text || sending.value) return
+	if (!sessionId.value) {
+		ElMessage.warning('会话尚未建立，请稍后重试')
+		return
+	}
 	messages.value.push({ role: 'user', content: text })
 	draft.value = ''
-	await scrollToBottom()
-
-	// 占位回声：仅用于展示流式样式，不调用接口
+	sending.value = true
 	const reply: Msg = { role: 'assistant', content: '', streaming: true }
 	messages.value.push(reply)
-	for (const ch of '（此处为版式占位）接入 SSE 后，这里会逐字出现模型回复。') {
-		reply.content += ch
-		await new Promise((r) => setTimeout(r, 24))
-		await scrollToBottom()
+	
+	try {
+		const res = await fetch(`/api/banma/v1/agents/sessions/${sessionId}/chat`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: tokenStore.get(),
+			},
+			body: JSON.stringify({ message: text }),
+		})
+		if (!res.body) throw new Error('响应无流')
+		
+		const reader = res.body.getReader()
+		const decoder = new TextDecoder()
+		let buffer = ''
+		
+		while(true) {
+			const { done, value } = await reader.read()
+			if(done) break
+			buffer += decoder.decode(value, { stream: true })
+			// SSE 以空行分隔事件；逐行解析 data:
+			const chunks = buffer.split('\n\n')
+			buffer = chunks.pop() ?? ''
+			for(const raw of chunks) {
+				const line = raw.split('\n').find((l) => l.startsWith('data:'))
+				if(!line) continue
+				const payload = line.slice(5).trim()
+				if(payload === '[DONE]') break
+				reply.content += payload
+				await scrollToBottom()
+			}
+		}
+	} catch (e) {
+		reply.content ||= '（对话失败：后端 SSE 尚未接入）'
+	} finally {
+		reply.streaming = false
+		sending.value = false
 	}
-	reply.streaming = false
 }
 
 /** Enter 发送，Shift+Enter 换行 */
@@ -57,6 +105,11 @@ function onKeydown(e: KeyboardEvent) {
 		void onSend()
 	}
 }
+
+onMounted(async () => {
+	const s = await api.post<{sessionId: string}>('/agents/sessions', {})
+	sessionId.value = s.sessionId
+})
 </script>
 
 <template>
