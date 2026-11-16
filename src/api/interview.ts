@@ -5,7 +5,8 @@
  *   AgentFileController（/api/banma/v1/agents/files/*）
  */
 
-import { api } from './client'
+import { api, apiLong } from './client'
+import type { AnswerReq, AnswerResp, CurrentQuestionResp, ReportDetail, ReportItem } from './types'
 
 /** 创建会话的响应（对齐 InterviewSessionCreateRespDTO） */
 export interface SessionCreated {
@@ -49,4 +50,34 @@ export function uploadResume(file: File) {
 	// 2026-11-13 修正：原路径 '/agent/diles/upload' 有两处笔误（agent→agents、diles→files），
 	// 且漏了 Java 侧的 sessionId 查询参数，实际会 404。
 	return api.post<FileUploaded>('/agents/files/upload', fd)
+}
+
+/* ══════════════════════════════════════════════════════════
+ * 答题与报告（2026-11-15 代写，R16 例外）
+ * 说明：为让页面能立刻对着真接口跑，这 4 个封装由 Agent 代写。
+ *      它们只是「路径 + 类型」的机械映射，无业务判断；你可以随时改写。
+ *      真正留给你的是：会话状态机、提交流程、SSE 消费。
+ * ══════════════════════════════════════════════════════════ */
+
+
+/** 当前题：进入面试间或点「下一题」 */
+export function getCurrentQuestion(sessionId: string) {
+	return api.get<CurrentQuestionResp>(`/interview/sessions/${sessionId}/current-question`)
+}
+
+/** 提交本题答案：AI 评分 3~8 秒，必须用 60s 实例 */
+export function submitAnswer(sessionId: string, req: AnswerReq) {
+	return apiLong.post<AnswerResp>(`/interview/sessions/${sessionId}/interview/answer`, req)
+}
+
+/** 报告列表（分页） */
+export function listReports(pageNum = 1, pageSize = 20) {
+	return api.get<{ records: ReportItem[]; total: number }>('/interview/interview/records', {
+		params: { pageNum, pageSize },
+	})
+}
+
+/** 报告详情：总分 + 雷达 + 逐题复盘 */
+export function getReportDetail(sessionId: string) {
+	return api.get<ReportDetail>(`/interview/interview/record/${sessionId}`)
 }
