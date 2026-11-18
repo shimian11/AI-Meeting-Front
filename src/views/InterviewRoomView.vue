@@ -11,7 +11,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { runQuestionOfficer, type OfficerResponse } from '@/api/agent'
-import { advanceQuestion, getCurrentQuestion, restoreSession, submitAnswer } from '@/api/interview'
+import { getCurrentQuestion, restoreSession, submitAnswer } from '@/api/interview'
 import type { AnswerResp, CurrentQuestionResp } from '@/api/types'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import ScoreBadge from '@/components/ui/ScoreBadge.vue'
@@ -81,7 +81,7 @@ const current = ref<CurrentQuestionResp | null>(null)
 const answer = ref('')
 const scored = ref<AnswerResp | null>(null)
 const submitting = ref(false)
-const followUp = ref<string | null>(null)
+const isFollowUp = ref(false)
 
 /** 拉当前题：接口没返回值时退回出题官给的题目列表，避免白屏 */
 async function loadCurrent() {
@@ -96,39 +96,46 @@ async function loadCurrent() {
 
 /** 当前展示的题干：优先后端当前题，其次本地题目列表 */
 const activeQuestion = computed(() => {
-	if (current.value?.question) return current.value.question
+	if (current.value?.questionContent) return current.value.questionContent
 	return result.value?.questions?.[activeIndex.value] ?? ''
 })
+
+/** 当前题号：优先后端游标（可能是 "3-1" 这种追编号），其次本地下标 +1 */
+const activeQuestionNumber = computed(() =>
+  String(current.value?.questionNumber ?? activeIndex.value + 1)
+)
 
 async function onSubmit() {
 	if (!answer.value.trim() || submitting.value) return
 	submitting.value = true
 	try {
-		scored.value = await submitAnswer(sessionId, { answer: answer.value })
-		
-		if (scored.value.followUpNeeded && scored.value.followUpQuestion) {
-			followUp.value = scored.value.followUpQuestion
-			answer.value = ''		// 换一题作答，清空输入避免误答
-		} else if (scored.value.finished) {
-			void router.push(`/interview/report/${sessionId}`)  //已到最后一题   -》   报告
-		}
+    // 必须赋值：下面要读 finished / nextQuestion，丢了返回值会直接崩
+    scored.value = await submitAnswer(sessionId, {
+      questionNumber: activeQuestionNumber.value,
+      answerContent: answer.value,
+    })
+
+    // 已到最后一题：跳报告页
+    if (scored.value.finished) {
+      void router.push(`/interview/report/${sessionId}`)
+      return
+    }
+
+    // 用响应里的下一题直接推进，省一次 next-question 请求
+    if (scored.value.nextQuestionNumber && scored.value.nextQuestion) {
+      current.value = {
+        questionNumber: scored.value.nextQuestionNumber,
+        questionContent: scored.value.nextQuestion,
+        isSuccess: true,
+      }
+      isFollowUp.value = Boolean(scored.value.isFollowUp)
+      answer.value = ''
+    }
 	} finally {
 		submitting.value = false
 	}
 }
 
-/** 下一题：advanceQuestion 已返回新题，无需再拉一次 */
-async function onNext() {
-	followUp.value = null
-	scored.value = null
-	answer.value = ''
-	try {
-		current.value = await advanceQuestion(sessionId)
-		if (current.value) activeIndex.value = current.value.questionNumber - 1
-	} catch {
-		/* 已到最后一题时后端会拒绝，交给 finished 分支处理 */
-	}
-}
 
 /**
  * 进页面：先出题（渲染题目列表），再尝试从快照恢复游标。
@@ -141,7 +148,7 @@ onMounted(async () => {
 	try {
 		const restored = await restoreSession(sessionId)
 		if (restored?.questionNumber) {
-			activeIndex.value = restored.questionNumber - 1
+			activeIndex.value = Number(restored.questionNumber) - 1
 			current.value = restored
 		}
 	} catch {
@@ -218,14 +225,11 @@ onMounted(async () => {
 						<div class="mono-label mb-3">题目 · {{ result.questions.length }}</div>
 						<ol class="m-0 list-none space-y-1 p-0">
 							<li v-for="(q, i) in result.questions" :key="i">
-								<button
-									class="flex w-full items-center gap-3 rounded-[2px] px-3 py-2 text-left transition-colors hover:bg-accent-soft"
-									:class="i === activeIndex ? 'bg-accent-soft' : ''"
-									@click="activeIndex = i; scored = null"
-								>
+								<!-- 纯展示：面试按顺序答，不支持跳题（跳题会与后端游标错位，提交被判 stale_question） -->
+								<div class="flex w-full items-center gap-3 rounded-[2px] px-3 py-2" :class="i === activeIndex ? 'bg-accent-soft' : ''">
 									<span class="font-mono text-[11px]" :class="i === activeIndex ? 'text-ink' : 'text-muted'">{{ String(i + 1).padStart(2, '0') }}</span>
 									<span class="truncate text-[13px]" :class="i === activeIndex ? 'text-ink' : 'text-muted'">{{ q }}</span>
-								</button>
+								</div>
 							</li>
 						</ol>
 						<div class="rule my-5" />
@@ -236,7 +240,11 @@ onMounted(async () => {
 					<!-- 右：当前题 + 作答 + 评分 -->
 					<section>
 						<article class="panel px-7 py-6">
-							<div class="mono-label">第 {{ String((current?.questionNumber ?? activeIndex + 1)).padStart(2, '0') }} 题</div>
+							<div class="flex items-center gap-2">
+								<span class="mono-label">第 {{ activeQuestionNumber }} 题</span>
+								<!-- 追问标记：后端 isFollowUp=true 时显示，追问也是一道独立题 -->
+								<span v-if="isFollowUp" class="rounded-[2px] border border-rule-strong px-1.5 py-0.5 font-mono text-[10px] text-muted">追问</span>
+							</div>
 							<h2 class="mt-2 text-[19px] leading-[1.7]">{{ activeQuestion }}</h2>
 						</article>
 
@@ -255,29 +263,22 @@ onMounted(async () => {
 							</div>
 						</div>
 
-						<!-- 评分回显卡（版式占位，数据待接 answer 接口） -->
+						<!-- 评分回显卡：数据来自 POST .../interview/answer-json -->
 						<article v-if="scored" class="panel mt-6 px-7 py-6">
 							<div class="flex items-center gap-4">
-								<ScoreBadge :score="scored.score" size="lg" />
+								<ScoreBadge :score="scored.score ?? 0" size="lg" />
 								<div>
 									<div class="mono-label">本题得分</div>
-									<div class="text-[13px] text-muted">满分 100</div>
+									<div class="text-[13px] text-muted">满分 100 · 累计 {{ scored.totalScore ?? 0 }}</div>
 								</div>
 							</div>
 							<div class="rule my-5" />
-							<p class="text-[14px] leading-[1.9] text-ink-2">{{ scored.feedback }}</p>
-							<ul v-if="scored.missingPoints.length" class="m-0 mt-3 list-none space-y-1 p-0">
+							<p class="text-[14px] leading-[1.9] text-ink-2">{{ scored.feedback ?? '（无点评）' }}</p>
+							<ul v-if="scored.missingPoints?.length" class="m-0 mt-3 list-none space-y-1 p-0">
 								<li v-for="m in scored.missingPoints" :key="m" class="text-[12px] leading-[1.7] text-danger">· {{ m }}</li>
 							</ul>
 							<div class="rule my-5" />
-							<p class="mono-label">评分结果来自 POST /interview/answer</p>
-						</article>
-
-						<!-- 追问：后端 followUpNeeded=true 时展示，答完追问才推进题号 -->
-						<article v-if="followUp" class="panel mt-4 border-rule-strong px-7 py-6">
-							<div class="mono-label">追问</div>
-							<p class="mt-2 text-[15px] leading-[1.9] text-ink">{{ followUp }}</p>
-							<p class="mono-label mt-4">接着答这一问，提交后会重新评分</p>
+							<p class="mono-label">评分结果来自 POST .../interview/answer-json</p>
 						</article>
 
 						<footer class="mt-8">
