@@ -67,7 +67,7 @@ export function getCurrentQuestion(sessionId: string) {
 
 /** 提交本题答案：AI 评分 3~8 秒，必须用 60s 实例 */
 export function submitAnswer(sessionId: string, req: AnswerReq) {
-	return apiLong.post<AnswerResp>(`/interview/sessions/${sessionId}/interview/answer`, req)
+	return apiLong.post<AnswerResp>(`/interview/sessions/${sessionId}/interview/answer-json`, req)
 }
 
 /** 报告列表（分页） */
