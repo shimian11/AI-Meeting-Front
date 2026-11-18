@@ -8,6 +8,7 @@ import PageHeader from '@/components/ui/PageHeader.vue'
 import ScoreBadge from '@/components/ui/ScoreBadge.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import { listReports } from '@/api/interview'
+import { formatTime } from '@/utils/datetime'
 import type { ReportItem } from '@/api/types'
 
 const loading = ref(true)
@@ -58,10 +59,10 @@ onMounted(load)
 				:to="`/interview/report/${row.sessionId}`"
 				class="flex items-center gap-6 px-6 py-5 no-underline transition-colors hover:bg-accent-soft"
 			>
-				<ScoreBadge :score="row.totalScore ?? 0" />
+				<ScoreBadge :score="row.interviewScore ?? 0" />
 				<div class="min-w-0 flex-1">
-					<div class="text-[15px] text-ink">{{ row.direction || '综合面试' }}</div>
-					<div class="mono-label mt-1">{{ row.createdAt }} · {{ row.questionCount ?? '—' }} 题</div>
+					<div class="text-[15px] text-ink">{{ row.interviewDirection || '综合面试' }}</div>
+					<div class="mono-label mt-1">{{ formatTime(row.createTime) }} · {{ row.questionCount ?? '—' }} 题</div>
 				</div>
 				<span class="mono-label shrink-0">查看复盘 →</span>
 			</RouterLink>
