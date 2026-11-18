@@ -11,7 +11,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { runQuestionOfficer, type OfficerResponse } from '@/api/agent'
-import { getCurrentQuestion, restoreSession, submitAnswer } from '@/api/interview'
+import { getCurrentQuestion, restoreSession, saveInterviewRecord, submitAnswer } from '@/api/interview'
 import type { AnswerResp, CurrentQuestionResp } from '@/api/types'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import ScoreBadge from '@/components/ui/ScoreBadge.vue'
@@ -115,8 +115,13 @@ async function onSubmit() {
       answerContent: answer.value,
     })
 
-    // 已到最后一题：跳报告页
+    // 已到最后一题：先落报告记录再跳转（不调此接口，报告列表永远为空），失败不阻断
     if (scored.value.finished) {
+      try {
+        await saveInterviewRecord(sessionId)
+      } catch {
+        /* 拦截器已提示，继续跳转 */
+      }
       void router.push(`/interview/report/${sessionId}`)
       return
     }
