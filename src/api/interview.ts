@@ -77,6 +77,15 @@ export function listReports(pageNum = 1, pageSize = 20) {
 	})
 }
 
+/**
+ * 保存面试记录：把 Redis 里的运行时快照落成 interview_record。
+ *
+ * <p>不调这个接口，报告列表永远为空——记录是手动触发的，不是自动生成的。</p>
+ */
+export function saveInterviewRecord(sessionId: string) {
+	return api.post<void>(`/interview/interview/record/save-from-redis/${sessionId}`)
+}
+
 /** 报告详情：总分 + 雷达 + 逐题复盘 */
 export function getReportDetail(sessionId: string) {
 	return api.get<ReportDetail>(`/interview/interview/record/${sessionId}`)
