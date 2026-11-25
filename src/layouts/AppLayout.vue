@@ -22,6 +22,18 @@ const navItems = [
 	{ to: '/profile', label: '档案', hint: '简历 / 目标 / 知识库' },
 ]
 
+/**
+ * 当前激活项：取「最长匹配」。
+ * 不能直接 startsWith —— `/interview/report` 会同时命中 `/interview` 与 `/interview/report`，
+ * 两个菜单一起高亮。规则：完全相等，或以 `${to}/` 开头（这样 /interview/xxx 也点亮「面试」）。
+ */
+const activePath = computed(() => {
+	const hit = navItems
+		.filter((i) => route.path === i.to || route.path.startsWith(`${i.to}/`))
+		.sort((a, b) => b.to.length - a.to.length)[0]
+	return hit?.to ?? ''
+})
+
 function logout() {
 	tokenStore.clear()
 	void router.push('/login')
@@ -47,7 +59,7 @@ function logout() {
 					:key="item.to"
 					:to="item.to"
 					class="group rounded-[2px] px-3 py-2 no-underline transition-colors hover:bg-accent-soft"
-					:class="route.path.startsWith(item.to) ? 'bg-accent-soft' : ''"
+					:class="activePath === item.to ? 'bg-accent-soft' : ''"
 				>
 					<div class="text-[15px] leading-tight text-ink">{{ item.label }}</div>
 					<div v-if="!collapsed" class="mt-1 text-[11px] leading-tight text-muted">{{ item.hint }}</div>
@@ -64,7 +76,8 @@ function logout() {
 
 		<main class="min-w-0 flex-1">
 			<div class="mx-auto max-w-[980px] px-10 py-12">
-				<slot />
+				<!-- 子路由出口：这是路由布局组件，内容由 RouterView 渲染（不是 slot） -->
+				<RouterView />
 			</div>
 		</main>
 	</div>
