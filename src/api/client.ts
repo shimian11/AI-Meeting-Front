@@ -52,7 +52,7 @@ function createJavaApi(timeout: number): UnwrappedInstance {
 	instance.interceptors.request.use((cfg) => {
 		const token = tokenStore.get()
 		// Java 侧 Sa-Token 从请求头取 token；无 token 时不加，让后端返回未登录
-		if (token) cfg.headers.Authorization = token
+		if (token) cfg.headers.Authorization = `Bearer ${token}`
 		return cfg
 	})
 

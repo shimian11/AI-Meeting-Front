@@ -62,7 +62,7 @@ async function onSend() {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: tokenStore.get(),
+				Authorization: `Bearer ${tokenStore.get()}`,
 			},
 			body: JSON.stringify({ message: text }),
 		})
