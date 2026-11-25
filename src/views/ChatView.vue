@@ -11,7 +11,7 @@
 import { nextTick, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/ui/PageHeader.vue'
-import { tokenStore, api } from '@/api/client'
+import { tokenStore } from '@/api/client'
 
 interface Msg {
 	role: 'user' | 'assistant'
@@ -30,14 +30,12 @@ const sending = ref(false)
 /** 会话 id：进页面时创建（后端 POST /agents/sessions） */
 const sessionId = ref('')
 
-/** 建会话：SSE 需要一个 sessionId 才能续接历史 */
+/**
+ * 进页面暂时**不建会话**。
+ */
 onMounted(async () => {
-	try {
-		const s = await api.post<{ sessionId: string }>('/agents/sessions', {})
-		sessionId.value = s.sessionId
-	} catch {
-		/* 建会话失败时发送按钮可点，但发送会报错——错误交给拦截器提示 */
-	}
+	await nextTick()
+	scrollToBottom()
 })
 
 async function scrollToBottom() {
@@ -50,7 +48,7 @@ async function onSend() {
 	const text = draft.value.trim()
 	if (!text || sending.value) return
 	if (!sessionId.value) {
-		ElMessage.warning('会话尚未建立，请稍后重试')
+		ElMessage.warning('通用对话还没接入（D 阶段）：后端 SSE 接口尚未实现')
 		return
 	}
 	messages.value.push({ role: 'user', content: text })
