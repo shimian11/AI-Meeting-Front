@@ -104,10 +104,6 @@ function onKeydown(e: KeyboardEvent) {
 	}
 }
 
-onMounted(async () => {
-	const s = await api.post<{sessionId: string}>('/agents/sessions', {})
-	sessionId.value = s.sessionId
-})
 </script>
 
 <template>

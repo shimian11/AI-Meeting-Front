@@ -2,11 +2,6 @@
 /**
  * 用户档案：左侧三标签页（简历库 / 求职目标 / 知识库）+ 右侧「档案概览」。
  *
- * ⚠️ 数据来源待接后端（`docs/front/02` §4.3 · K12）：
- *    ① 用户维度多简历列表  ② 方向偏好与目标岗位  ③ 知识库条目 —— 三组接口均未实现。
- *    本页只交付**版式与交互骨架**，下面的数据全部是样例；接后端时替换常量即可，
- *    `activeTab`/`selectedDirection` 这类纯 UI 状态保留。
- *
  * 交互留白（等接口，不在本页实现）：
  *    设默认 / 上传新版本 / 删除简历 · 切方向保存 / 新增岗位 / 删除岗位 ·
  *    类型筛选 / 状态循环 / 新增知识条目
@@ -32,11 +27,11 @@ const directions = ['Java 后端', '前端', '全栈', '数据算法']
 
 // ─────────────────────────── 样例数据（接后端后整块替换）───────────────────────────
 
-/** 简历库：GET /users/{username}/resumes → [{ id, name, direction, pages, size, updatedAt, isDefault }] */
+/** 简历库：GET /users/{username}/resumes → [{ id, name, pages, size, updatedAt, isDefault }] */
 const resumes = ref([
-	{ id: 'r1', name: '简历_2026_Java后端.pdf', direction: 'Java 后端', pages: 2, size: '412 KB', updatedAt: '2026-11-13', isDefault: true },
-	{ id: 'r2', name: '简历_2026_全栈版.pdf', direction: '全栈', pages: 2, size: '388 KB', updatedAt: '2026-10-28', isDefault: false },
-	{ id: 'r3', name: '简历_实习版.pdf', direction: 'Java 后端', pages: 1, size: '196 KB', updatedAt: '2026-09-15', isDefault: false },
+	{ id: 'r1', name: '简历_2026_Java后端.pdf', pages: 2, size: '412 KB', updatedAt: '2026-11-13', isDefault: true },
+	{ id: 'r2', name: '简历_2026_全栈版.pdf', pages: 2, size: '388 KB', updatedAt: '2026-10-28', isDefault: false },
+	{ id: 'r3', name: '简历_实习版.pdf', pages: 1, size: '196 KB', updatedAt: '2026-09-15', isDefault: false },
 ])
 
 /** 默认简历（概览用） */
@@ -128,7 +123,7 @@ const kbStats = computed(() => {
 											class="shrink-0 rounded-[2px] border border-ink px-1.5 py-0.5 mono-label text-ink"
 										>默认</span>
 									</div>
-									<div class="mono-label mt-1">{{ r.direction }} · {{ r.pages }} 页 · {{ r.size }} · {{ r.updatedAt }}</div>
+									<div class="mono-label mt-1">{{ r.pages }} 页 · {{ r.size }} · {{ r.updatedAt }}</div>
 								</div>
 								<div class="flex shrink-0 items-center gap-3">
 									<button v-if="!r.isDefault" class="btn-ghost text-[12px]">设为默认</button>
