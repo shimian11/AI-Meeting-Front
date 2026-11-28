@@ -47,9 +47,36 @@ export function uploadResume(file: File) {
 	const fd = new FormData()
 	fd.append('file', file)
 	fd.append('bizType', 'resume')
-	// 2026-11-13 修正：原路径 '/agent/diles/upload' 有两处笔误（agent→agents、diles→files），
-	// 且漏了 Java 侧的 sessionId 查询参数，实际会 404。
 	return api.post<FileUploaded>('/agents/files/upload', fd)
+}
+
+/** 档案页简历项（对齐后端 ResumeListRespDTO） */
+export interface ResumeItem {
+	/** 后端序列化为字符串（19 位大整数，JS number 会丢精度） */
+	id: string
+	fileName: string
+	fileSize: number
+	/** 后端 Date 序列化为毫秒时间戳 */
+	updateTime: number
+	/** 0 否 1 是 */
+	isDefault: number
+	/** 预签名地址，7 天有效；每次拉列表都是新的，不要缓存 */
+	previewUrl: string
+}
+
+/** 简历列表（每次调用后端都会重新签发 previewUrl） */
+export function getResumes() {
+	return api.get<ResumeItem[]>('/users/resumes')
+}
+
+/** 设为默认简历 */
+export function setDefaultResume(id: string) {
+	return api.put<void>(`/users/resumes/${id}/default`)
+}
+
+/** 删除简历（逻辑删除；删默认时后端会自动顺延一份） */
+export function deleteResume(id: string) {
+	return api.delete<void>(`/users/resumes/${id}`)
 }
 
 /* ══════════════════════════════════════════════════════════
